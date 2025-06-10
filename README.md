@@ -40,3 +40,19 @@ The project uses **Python**, **discord.py**, and a **PostgreSQL database** to ma
 
 ## 🗂️ Project Structure
 
+algopath-discord-auth-bot/
+├── bot.py # Main bot logic
+├── db_setup.sql # SQL schema for database
+├── .env # Environment variables
+├── requirements.txt # Project dependencies
+└── README.md # This documentation
+
+---
+
+## 🚀 Getting Started
+
+### 🔧 1. Clone the Project
+
+```bash
+git clone https://github.com/your-username/algopath-discord-auth-bot.git
+cd algopath-discord-auth-bot 
