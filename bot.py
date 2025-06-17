@@ -13,6 +13,7 @@ from config import (
 # Discord bot setup
 intents = discord.Intents.default()
 intents.members = True
+intents.messages = True
 bot = discord.Client(intents=intents)
 
 # Connect to PostgreSQL
@@ -37,53 +38,67 @@ def send_otp_email(email, otp):
 
 @bot.event
 async def on_ready():
-    print("Bot is ready.")
-    print(f'Logged in as {bot.user} (ID: {bot.user.id})')
-
+    print("✅ Bot is ready.")
+    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 @bot.event
 async def on_member_join(member):
     try:
-        await member.send(
-            "👋 Welcome to Algopath! Please enter your registered Algopath email to start verification."
-        )
+        await member.send("👋 Welcome to Algopath! Please enter your registered Algopath email to start verification.")
     except discord.Forbidden:
-        print(f"Couldn’t DM {member.name}")
+        print(f"❌ Couldn’t DM {member.name}")
 
 @bot.event
 async def on_message(message):
-    if isinstance(message.channel, discord.DMChannel) and not message.author.bot:
-        user = message.author
-        content = message.content.strip()
+    if message.author.bot:
+        return
 
+    user = message.author
+    content = message.content.strip()
+
+    # ✉️ Email + OTP logic via DM
+    if isinstance(message.channel, discord.DMChannel):
         if '@' in content and '.' in content:
-            # Check email in DB
-            cur.execute("SELECT * FROM emails WHERE email=%s", (content,))
+            # Check if email exists in allowed list
+            cur.execute("SELECT * FROM emails WHERE email = %s", (content,))
+            if not cur.fetchone():
+                await message.channel.send("❌ Email not found in database.")
+                return
+
+            # Check if email is already verified
+            cur.execute("SELECT * FROM verified_users WHERE email = %s", (content,))
             if cur.fetchone():
-                otp = str(random.randint(100000, 999999))
-                cur.execute("INSERT INTO otps (email, otp) VALUES (%s, %s)", (content, otp))
-                conn.commit()
-                send_otp_email(content, otp)
-                await message.channel.send("✅ OTP sent to your email. Enter it here to complete verification.")
-            else:
-                await message.channel.send("❌ Email not found.")
+                await message.channel.send("⚠️ This email has already been used for verification.")
+                return
+
+            otp = str(random.randint(100000, 999999))
+            cur.execute("INSERT INTO otps (email, otp) VALUES (%s, %s)", (content, otp))
+            conn.commit()
+            send_otp_email(content, otp)
+            await message.channel.send("📧 OTP sent to your email. Enter it here to complete verification.")
+        
         elif content.isdigit():
             cur.execute("SELECT email, created_at FROM otps WHERE otp=%s", (content,))
             result = cur.fetchone()
             if result:
-                created_at = result[1]
+                email, created_at = result
                 if datetime.now() - created_at < timedelta(minutes=10):
                     guild = discord.utils.get(bot.guilds, id=GUILD_ID)
                     role = discord.utils.get(guild.roles, name='Verified')
                     member = guild.get_member(user.id)
+
                     if role and member:
                         await member.add_roles(role)
-                        await message.channel.send("🎉 Verification complete! You now have access.")
+                        await message.channel.send("🎉 Verification complete! Welcome to Algopath.")
                         print(f"✅ {user.name} verified.")
+
+                        # Add to verified_users table
+                        cur.execute("INSERT INTO verified_users (email, user_id) VALUES (%s, %s)", (email, user.id))
+                        conn.commit()
                     else:
-                        await message.channel.send("⚠️ Couldn’t assign role. Contact an admin.")
+                        await message.channel.send("⚠️ Could not assign role. Please contact an admin.")
                 else:
-                    await message.channel.send("❌ OTP expired. Restart verification.")
+                    await message.channel.send("❌ OTP expired. Please restart verification.")
             else:
                 await message.channel.send("❌ Invalid OTP.")
         else:
