@@ -14,6 +14,7 @@ from config import (
 intents = discord.Intents.default()
 intents.members = True
 intents.messages = True
+intents.message_content = True
 bot = discord.Client(intents=intents)
 
 # Connect to PostgreSQL
@@ -38,15 +39,15 @@ def send_otp_email(email, otp):
 
 @bot.event
 async def on_ready():
-    print("✅ Bot is ready.")
+    print("\u2705 Bot is ready.")
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 @bot.event
 async def on_member_join(member):
     try:
-        await member.send("👋 Welcome to Algopath! Please enter your registered Algopath email to start verification.")
+        await member.send("\ud83d\udc4b Welcome to Algopath! Please enter your registered Algopath email to start verification.")
     except discord.Forbidden:
-        print(f"❌ Couldn’t DM {member.name}")
+        print(f"\u274c Couldn’t DM {member.name}")
 
 @bot.event
 async def on_message(message):
@@ -56,27 +57,47 @@ async def on_message(message):
     user = message.author
     content = message.content.strip()
 
-    # ✉️ Email + OTP logic via DM
+    # Doubt handling in #doubts channel
+    if message.guild and message.channel.name == "doubts":
+        if message.reference:  # Check if it's a reply
+            replied_to_id = message.reference.message_id
+            cur.execute("SELECT id, user_id FROM doubts WHERE message_id = %s", (replied_to_id,))
+            row = cur.fetchone()
+            if row and row[1] == user.id and content.lower() == "resolved":
+                cur.execute("UPDATE doubts SET resolved = TRUE WHERE id = %s", (row[0],))
+                conn.commit()
+                await message.channel.send(f"\u2705 Your doubt has been marked as resolved, {user.name}.")
+                return
+        else:
+            cur.execute(
+                "INSERT INTO doubts (user_id, username, doubt, message_id) VALUES (%s, %s, %s, %s)",
+                (user.id, user.name, content, message.id)
+            )
+            conn.commit()
+            prompt = await message.channel.send(
+                f"\ud83d\udccc Please reply to *your message* with 'resolved' once your doubt has been cleared, {user.name}."
+            )
+            return
+
+    # Email + OTP logic via DM
     if isinstance(message.channel, discord.DMChannel):
         if '@' in content and '.' in content:
-            # Check if email exists in allowed list
             cur.execute("SELECT * FROM emails WHERE email = %s", (content,))
             if not cur.fetchone():
-                await message.channel.send("❌ Email not found in database.")
+                await message.channel.send("\u274c Email not found in database.")
                 return
 
-            # Check if email is already verified
             cur.execute("SELECT * FROM verified_users WHERE email = %s", (content,))
             if cur.fetchone():
-                await message.channel.send("⚠️ This email has already been used for verification.")
+                await message.channel.send("\u26a0\ufe0f This email has already been used for verification.")
                 return
 
             otp = str(random.randint(100000, 999999))
             cur.execute("INSERT INTO otps (email, otp) VALUES (%s, %s)", (content, otp))
             conn.commit()
             send_otp_email(content, otp)
-            await message.channel.send("📧 OTP sent to your email. Enter it here to complete verification.")
-        
+            await message.channel.send("\ud83d\udce7 OTP sent to your email. Enter it here to complete verification.")
+
         elif content.isdigit():
             cur.execute("SELECT email, created_at FROM otps WHERE otp=%s", (content,))
             result = cur.fetchone()
@@ -89,19 +110,17 @@ async def on_message(message):
 
                     if role and member:
                         await member.add_roles(role)
-                        await message.channel.send("🎉 Verification complete! Welcome to Algopath.")
-                        print(f"✅ {user.name} verified.")
-
-                        # Add to verified_users table
+                        await message.channel.send("\ud83c\udf89 Verification complete! Welcome to Algopath.")
+                        print(f"\u2705 {user.name} verified.")
                         cur.execute("INSERT INTO verified_users (email, user_id) VALUES (%s, %s)", (email, user.id))
                         conn.commit()
                     else:
-                        await message.channel.send("⚠️ Could not assign role. Please contact an admin.")
+                        await message.channel.send("\u26a0\ufe0f Could not assign role. Please contact an admin.")
                 else:
-                    await message.channel.send("❌ OTP expired. Please restart verification.")
+                    await message.channel.send("\u274c OTP expired. Please restart verification.")
             else:
-                await message.channel.send("❌ Invalid OTP.")
+                await message.channel.send("\u274c Invalid OTP.")
         else:
-            await message.channel.send("⚠️ Please enter a valid email or OTP.")
+            await message.channel.send("\u26a0\ufe0f Please enter a valid email or OTP.")
 
 bot.run(DISCORD_TOKEN)

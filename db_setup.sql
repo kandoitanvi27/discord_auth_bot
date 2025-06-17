@@ -2,6 +2,7 @@
 DROP TABLE IF EXISTS verified_users;
 DROP TABLE IF EXISTS otps;
 DROP TABLE IF EXISTS emails;
+DROP TABLE IF EXISTS doubts;
 
 -- Table for registered Algopath emails
 CREATE TABLE IF NOT EXISTS emails (
@@ -30,3 +31,13 @@ INSERT INTO emails (email) VALUES
 ('user@gmail.com'),
 ('soniayush312@gmail.com'),
 ('231162@iiitt.ac.in');
+
+CREATE TABLE IF NOT EXISTS doubts (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    doubt TEXT NOT NULL,
+    message_id BIGINT UNIQUE NOT NULL,
+    resolved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
